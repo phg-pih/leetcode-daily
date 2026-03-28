@@ -1,18 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSQL } from "@prisma/adapter-libsql";
-import { createClient } from "@libsql/client";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient() {
   if (process.env.TURSO_DATABASE_URL) {
-    // Production: Turso (libSQL)
-    const libsql = createClient({
+    // Production: Turso (libSQL) — PrismaLibSQL takes config directly (not a pre-created client)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adapter = new PrismaLibSQL({
       url: process.env.TURSO_DATABASE_URL,
       authToken: process.env.TURSO_AUTH_TOKEN,
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const adapter = new PrismaLibSQL(libsql as any);
+    } as any);
     return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   }
 

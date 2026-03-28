@@ -22,6 +22,7 @@ prisma/dev.db-journal
 prisma/dev.db-wal
 prisma/dev.db-shm
 prisma/prisma/         # nested db folder created by Prisma
+turso_init.sql
 
 # ── Secrets & Keys ────────────────────────────────────
 *.pem
@@ -60,3 +61,4 @@ coverage/
 # ── Misc ──────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
+.vercel
