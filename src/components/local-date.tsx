@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export function LocalDate({ date }: { date: Date | string }) {
+export function LocalDate({ date }: { date: string }) {
   const [formatted, setFormatted] = useState<string | null>(null);
 
   useEffect(() => {

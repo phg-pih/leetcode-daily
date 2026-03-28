@@ -69,7 +69,7 @@ export default async function Dashboard() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-white text-sm">{s.problemTitle}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  <LocalDate date={s.date} />
+                  <LocalDate date={s.date.toISOString()} />
                 </p>
                 {s.status !== "accepted" && s.error && (
                   <p className="text-xs text-red-400 mt-1 truncate" title={s.error}>
