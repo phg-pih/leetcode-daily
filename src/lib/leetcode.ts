@@ -153,19 +153,35 @@ function extractCode(content: string): string | null {
   // Normalize escaped newlines (LeetCode returns literal \n strings)
   const normalized = content.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
 
+  let code: string | null = null;
+
   // Try markdown fences with js/javascript tag first
   const mdMatch = normalized.match(/```(?:javascript|js|JavaScript)\n([\s\S]*?)```/i);
-  if (mdMatch) return mdMatch[1].trim();
+  if (mdMatch) code = mdMatch[1].trim();
 
   // Fallback: any ``` block
-  const anyMatch = normalized.match(/```[^\n]*\n([\s\S]*?)```/);
-  if (anyMatch) return anyMatch[1].trim();
+  if (!code) {
+    const anyMatch = normalized.match(/```[^\n]*\n([\s\S]*?)```/);
+    if (anyMatch) code = anyMatch[1].trim();
+  }
 
   // Fallback: <pre> or <code> tags (LeetCode sometimes sends HTML)
-  const preMatch = normalized.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-  if (preMatch) return preMatch[1].replace(/<[^>]+>/g, "").trim();
+  if (!code) {
+    const preMatch = normalized.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+    if (preMatch) code = preMatch[1].replace(/<[^>]+>/g, "").trim();
+  }
 
-  return null;
+  if (!code) return null;
+
+  // Reject truncated code: braces must be balanced
+  const opens = (code.match(/\{/g) ?? []).length;
+  const closes = (code.match(/\}/g) ?? []).length;
+  if (opens !== closes) return null;
+
+  // Must contain a function definition
+  if (!/function|=>/.test(code)) return null;
+
+  return code;
 }
 
 export async function pollSubmissionResult(

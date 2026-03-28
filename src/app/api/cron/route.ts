@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions } from "@/lib/leetcode";
+import { generateSolution } from "@/lib/ai";
 import { notifyUser } from "@/lib/notify";
 
 // Vercel Cron: runs at 01:00 UTC daily
@@ -52,9 +53,23 @@ async function processUser(
 ) {
   if (!user.lcSession || !user.lcCsrfToken) return { skipped: true };
 
-  // Fetch all community solutions (sorted by votes)
-  const solutions = await fetchCommunitySolutions(problem.slug);
-  if (!solutions.length) throw new Error("No community solutions found for: " + problem.slug);
+  // Primary: AI-generated solution
+  const solutionCandidates: string[] = [];
+  try {
+    const aiSolution = await generateSolution(problem.title, problem.content, problem.codeSnippet);
+    solutionCandidates.push(aiSolution);
+  } catch (err) {
+    console.warn("AI generation failed, falling back to community solutions:", err);
+  }
+
+  // Fallback: community solutions (sorted by votes, validated)
+  if (solutionCandidates.length === 0) {
+    const communitySolutions = await fetchCommunitySolutions(problem.slug);
+    solutionCandidates.push(...communitySolutions);
+  }
+
+  const solutions = solutionCandidates;
+  if (!solutions.length) throw new Error("No solutions available for: " + problem.slug);
 
   // Try each solution until one is accepted
   let lastResult: Awaited<ReturnType<typeof pollSubmissionResult>> = { status: "error", error: "No solutions tried" };
