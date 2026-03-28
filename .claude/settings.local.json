@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx:*)",
+      "Bash(printf \"No\\\\nNo\\\\n\")",
+      "Bash(npm install:*)",
+      "Bash(echo \"DATABASE_URL=\"\"file:./dev.db\"\"\")",
+      "Bash(DATABASE_URL=\"file:./prisma/dev.db\" npx prisma db push 2>&1)",
+      "Read",
+      "Edit",
+      "Bash(node:*)",
+      "Bash(timeout 15 npm run dev)",
+      "Bash(curl -s http://localhost:3000/api/test-generate -H \"Authorization: Bearer mMCbB9+2Kk6fc/ZHBVR10UCfeBGcWfKkUCYSgm6g3f8=\")",
+      "Bash(curl -s -X POST https://leetcode.com/graphql -H \"Content-Type: application/json\" -d '{\"\"\"\"query\"\"\"\":\"\"\"\"query communitySolutions\\($questionSlug: String!, $languageTags: [String!]\\) { questionSolutions\\(filters: { questionSlug: $questionSlug, first: 10, skip: 0, orderBy: hot, languageTags: $languageTags }\\) { solutions { title post { content voteCount } } } }\"\"\"\",\"\"\"\"variables\"\"\"\":{\"\"\"\"questionSlug\"\"\"\":\"\"\"\"find-the-string-with-lcp\"\"\"\",\"\"\"\"languageTags\"\"\"\":[\"\"\"\"javascript\"\"\"\"]}}')",
+      "Bash(grep -o '```[^`]*```')",
+      "Bash(curl -s http://localhost:3000/api/cron -H \"Authorization: Bearer mMCbB9+2Kk6fc/ZHBVR10UCfeBGcWfKkUCYSgm6g3f8=\")",
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
