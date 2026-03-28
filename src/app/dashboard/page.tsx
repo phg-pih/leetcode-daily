@@ -66,13 +66,18 @@ export default async function Dashboard() {
               key={s.id}
               className="flex items-center justify-between bg-gray-900 rounded-lg px-4 py-3"
             >
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="font-medium text-white text-sm">{s.problemTitle}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   <LocalDate date={s.date} />
                 </p>
+                {s.status !== "accepted" && s.error && (
+                  <p className="text-xs text-red-400 mt-1 truncate" title={s.error}>
+                    {s.error}
+                  </p>
+                )}
               </div>
-              <div className="text-right">
+              <div className="text-right ml-4 shrink-0">
                 <StatusBadge status={s.status} />
                 {s.runtime && <p className="text-xs text-gray-500 mt-1">{s.runtime}</p>}
               </div>
