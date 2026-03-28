@@ -23,7 +23,7 @@ Build a web app that automatically submits the LeetCode daily question on my beh
 ## Auto-Submit Behavior
 <!-- Describe what should happen each day -->
 - Trigger: Vercel Cron at `HH:MM UTC` 01:00:00
-- Solution source: (e.g., pre-written in DB, AI-generated, hardcoded stubs) => AI-generated
+- Solution source: (e.g., pre-written in DB, AI-generated, hardcoded stubs) => leetcode sulution community
 - On success: (e.g., log to DB, send notification) => log to DB, send notification
 - On failure: (e.g., retry, alert) => retry, alert
 
@@ -47,4 +47,4 @@ we don't need to store solution
 <!-- Things still undecided -->
 - Which free database to use? => sqlite 
 - Single-user or multi-user? => multi-user
-- Where do solutions come from? => AI generate
+- Where do solutions come from? => community
