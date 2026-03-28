@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { signOut } from "@/lib/auth";
+import { LocalDate } from "@/components/local-date";
 
 export default async function Dashboard() {
   const session = await auth();
@@ -68,13 +69,7 @@ export default async function Dashboard() {
               <div>
                 <p className="font-medium text-white text-sm">{s.problemTitle}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {new Date(s.date).toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  <LocalDate date={s.date} />
                 </p>
               </div>
               <div className="text-right">
