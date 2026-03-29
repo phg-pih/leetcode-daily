@@ -68,32 +68,44 @@ export async function submitSolution(
   slug: string,
   code: string,
   lcSession: string,
-  csrfToken: string
+  csrfToken: string,
+  retries = 3
 ): Promise<string> {
   const questionId = await getQuestionId(slug);
 
-  const res = await fetch(`https://leetcode.com/problems/${slug}/submit/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: `LEETCODE_SESSION=${lcSession}; csrftoken=${csrfToken}`,
-      Referer: `https://leetcode.com/problems/${slug}/`,
-      "X-CSRFToken": csrfToken,
-    },
-    body: JSON.stringify({
-      lang: "javascript",
-      question_id: questionId,
-      typed_code: code,
-    }),
-  });
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(`https://leetcode.com/problems/${slug}/submit/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `LEETCODE_SESSION=${lcSession}; csrftoken=${csrfToken}`,
+        Referer: `https://leetcode.com/problems/${slug}/`,
+        "X-CSRFToken": csrfToken,
+      },
+      body: JSON.stringify({
+        lang: "javascript",
+        question_id: questionId,
+        typed_code: code,
+      }),
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Submit failed: ${res.status} ${text}`);
+    if (res.status === 429) {
+      if (attempt === retries) throw new Error(`Submit failed: 429 (rate limited after ${retries + 1} attempts)`);
+      const backoff = Math.pow(2, attempt) * 10_000; // 10s, 20s, 40s
+      await new Promise((r) => setTimeout(r, backoff));
+      continue;
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Submit failed: ${res.status} ${text}`);
+    }
+
+    const json = await res.json();
+    return String(json.submission_id);
   }
 
-  const json = await res.json();
-  return String(json.submission_id);
+  throw new Error("Submit failed: exhausted retries");
 }
 
 async function getQuestionId(slug: string): Promise<string> {

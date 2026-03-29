@@ -34,14 +34,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 
-  const results = await Promise.allSettled(
-    users.map((user) => processUser(user, problem))
-  );
-
-  const summary = results.map((r, i) => ({
-    userId: users[i].id,
-    result: r.status === "fulfilled" ? r.value : { error: String(r.reason) },
-  }));
+  // Process users sequentially to avoid LeetCode rate limiting (429)
+  const summary = [];
+  for (const user of users) {
+    const result = await processUser(user, problem).catch((err) => ({ error: String(err) }));
+    summary.push({ userId: user.id, result });
+  }
 
   return NextResponse.json({ problem: problem.slug, summary });
 }
@@ -52,25 +50,33 @@ async function processUser(
 ) {
   if (!user.lcSession || !user.lcCsrfToken) return { skipped: true };
 
-  const solutions = await fetchCommunitySolutions(problem.slug);
-  if (!solutions.length) throw new Error("No community solutions found for: " + problem.slug);
-
-  // Try each solution until one is accepted
   let lastResult: Awaited<ReturnType<typeof pollSubmissionResult>> = { status: "error", error: "No solutions tried" };
 
-  for (const code of solutions) {
-    let submissionId: string;
-    try {
-      submissionId = await submitSolution(problem.slug, code, user.lcSession, user.lcCsrfToken);
-    } catch (err) {
-      lastResult = { status: "error", error: String(err) };
-      continue;
+  try {
+    const solutions = await fetchCommunitySolutions(problem.slug);
+    if (!solutions.length) {
+      lastResult = { status: "error", error: "No community solutions found" };
+    } else {
+      // Try each solution until one is accepted
+      for (const code of solutions) {
+        let submissionId: string;
+        try {
+          submissionId = await submitSolution(problem.slug, code, user.lcSession, user.lcCsrfToken);
+        } catch (err) {
+          lastResult = { status: "error", error: String(err) };
+          continue;
+        }
+
+        const result = await pollSubmissionResult(submissionId, user.lcSession);
+        lastResult = result;
+
+        if (result.status === "accepted") break;
+        // Brief pause before trying next solution to avoid rate limits
+        await new Promise((r) => setTimeout(r, 3000));
+      }
     }
-
-    const result = await pollSubmissionResult(submissionId, user.lcSession);
-    lastResult = result;
-
-    if (result.status === "accepted") break;
+  } catch (err) {
+    lastResult = { status: "error", error: String(err) };
   }
 
   // Log final result to DB
@@ -86,7 +92,7 @@ async function processUser(
     },
   });
 
-  // Notify user
+  // Always notify the user — both success and failure
   const isAccepted = lastResult.status === "accepted";
   const emoji = isAccepted ? "✅" : "❌";
   const message = isAccepted
