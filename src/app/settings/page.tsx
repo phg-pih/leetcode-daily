@@ -164,11 +164,37 @@ function NotificationRow({
 }) {
   const [target, setTarget] = useState(current?.target ?? "");
   const [enabled, setEnabled] = useState(current?.enabled ?? false);
+  const [testStatus, setTestStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [testError, setTestError] = useState("");
 
   useEffect(() => {
     setTarget(current?.target ?? "");
     setEnabled(current?.enabled ?? false);
   }, [current]);
+
+  async function sendTest() {
+    if (!target) return;
+    setTestStatus("sending");
+    setTestError("");
+    try {
+      const res = await fetch("/api/notifications/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, target }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTestStatus("ok");
+      } else {
+        setTestStatus("error");
+        setTestError(data.error ?? "Unknown error");
+      }
+    } catch {
+      setTestStatus("error");
+      setTestError("Request failed");
+    }
+    setTimeout(() => setTestStatus("idle"), 4000);
+  }
 
   return (
     <div className="mb-5 last:mb-0">
@@ -202,7 +228,18 @@ function NotificationRow({
         >
           Save
         </button>
+        <button
+          type="button"
+          onClick={sendTest}
+          disabled={!target || testStatus === "sending"}
+          className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition"
+        >
+          {testStatus === "sending" ? "…" : testStatus === "ok" ? "✓ Sent" : "Test"}
+        </button>
       </div>
+      {testStatus === "error" && (
+        <p className="text-red-400 text-xs mt-1">{testError}</p>
+      )}
     </div>
   );
 }

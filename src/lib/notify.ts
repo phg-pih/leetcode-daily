@@ -50,14 +50,22 @@ export async function notifyUser(
   channels: NotificationChannel[],
   subject: string,
   message: string
-) {
+): Promise<{ type: string; ok: boolean; error?: string }[]> {
   const active = channels.filter((c) => c.enabled);
 
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     active.map((ch) => {
       if (ch.type === "telegram") return sendTelegram(ch.target, message);
       if (ch.type === "email") return sendEmail(ch.target, subject, message);
       return Promise.resolve();
     })
   );
+
+  return results.map((r, i) => {
+    if (r.status === "rejected") {
+      console.error(`[notify] ${active[i].type} failed for target ${active[i].target}:`, r.reason);
+      return { type: active[i].type, ok: false, error: String(r.reason) };
+    }
+    return { type: active[i].type, ok: true };
+  });
 }

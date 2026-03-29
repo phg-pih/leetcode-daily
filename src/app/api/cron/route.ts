@@ -99,7 +99,7 @@ async function processUser(
     ? `${emoji} *LeetCode Daily Accepted!*\n*Problem:* ${problem.title} (${problem.difficulty})\n*Runtime:* ${lastResult.runtime}\n*Memory:* ${lastResult.memory}`
     : `${emoji} *LeetCode Daily Failed*\n*Problem:* ${problem.title}\n*Status:* ${lastResult.status}${lastResult.error ? `\n*Error:* ${lastResult.error}` : ""}`;
 
-  await notifyUser(user.notifications, `LeetCode Daily: ${problem.title}`, message);
+  const notifyResults = await notifyUser(user.notifications, `LeetCode Daily: ${problem.title}`, message);
 
-  return lastResult;
+  return { ...lastResult, notifications: notifyResults };
 }
