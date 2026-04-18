@@ -4,8 +4,14 @@ export interface DailyProblem {
   slug: string;
   title: string;
   difficulty: string;
-  content: string;
-  codeSnippet: string; // JavaScript starter code
+}
+
+export interface SolutionNode {
+  node: {
+    title: string;
+    slug: string;
+    topicId: number;
+  }
 }
 
 const DAILY_QUERY = `
@@ -16,12 +22,6 @@ const DAILY_QUERY = `
         titleSlug
         title
         difficulty
-        content
-        codeSnippets {
-          lang
-          langSlug
-          code
-        }
       }
     }
   }
@@ -51,16 +51,11 @@ export async function fetchDailyProblem(): Promise<DailyProblem> {
 
   const json = await res.json();
   const q = json.data.activeDailyCodingChallengeQuestion.question;
-  const jsSnippet = q.codeSnippets.find(
-    (s: { langSlug: string; code: string }) => s.langSlug === "javascript"
-  );
 
   return {
     slug: q.titleSlug,
     title: q.title,
-    difficulty: q.difficulty,
-    content: q.content,
-    codeSnippet: jsSnippet?.code ?? "",
+    difficulty: q.difficulty
   };
 }
 
@@ -69,7 +64,7 @@ export async function submitSolution(
   code: string,
   lcSession: string,
   csrfToken: string,
-  retries = 3
+  retries = 1
 ): Promise<string> {
   const questionId = await getQuestionId(slug);
 
@@ -124,76 +119,86 @@ async function getQuestionId(slug: string): Promise<string> {
 }
 
 const COMMUNITY_SOLUTIONS_QUERY = `
-  query communitySolutions($questionSlug: String!, $languageTags: [String!]) {
-    questionSolutions(
-      filters: { questionSlug: $questionSlug, first: 10, skip: 0, orderBy: hot, languageTags: $languageTags }
-    ) {
-      solutions {
-        title
-        post {
-          content
-          voteCount
-        }
+  query ugcArticleSolutionArticles(
+      $questionSlug: String!
+      $orderBy: ArticleOrderByEnum
+      $tagSlugs: [String!]
+      $first: Int
+  ) {
+      ugcArticleSolutionArticles(
+          questionSlug: $questionSlug
+          orderBy: $orderBy
+          tagSlugs: $tagSlugs
+          first: $first
+      ) {
+          totalNum
+          edges {
+              node {
+                  ...ugcSolutionArticleFragment
+              }
+          }
       }
-    }
+  }
+                  
+  fragment ugcSolutionArticleFragment on SolutionArticleNode {
+      title
+      slug
+      articleType
+      summary
+      topicId
   }
 `;
 
-export async function fetchCommunitySolutions(slug: string, langSlug = "javascript"): Promise<string[]> {
+const COMMUNITY_SOLUTION_DETAILS_QUERY = `
+  query ugcArticleSolutionArticle($topicId: ID) {
+      ugcArticleSolutionArticle(topicId: $topicId) {
+          content
+      }
+  }
+`;
+
+export async function fetchCommunitySolutions(slug: string, langSlug = "javascript", first = 5, orderBy = "HOT"): Promise<SolutionNode[]> {
   const res = await fetch(LEETCODE_GRAPHQL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query: COMMUNITY_SOLUTIONS_QUERY,
-      variables: { questionSlug: slug, languageTags: [langSlug] },
+      variables: { questionSlug: slug, tagSlugs: [langSlug], first: first, orderBy: orderBy },
     }),
   });
 
   if (!res.ok) return [];
 
   const json = await res.json();
-  const solutions: { post: { content: string; voteCount: number } }[] =
-    json.data?.questionSolutions?.solutions ?? [];
-
-  return solutions
-    .sort((a, b) => b.post.voteCount - a.post.voteCount)
-    .map((s) => extractCode(s.post.content))
-    .filter((code): code is string => code !== null);
+  return json.data?.ugcArticleSolutionArticles?.edges ?? [];
 }
 
-function extractCode(content: string): string | null {
-  // Normalize escaped newlines (LeetCode returns literal \n strings)
-  const normalized = content.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+export async function fetchCommunitySolutionDetail(topicId: number): Promise<string> {
+  const res = await fetch(LEETCODE_GRAPHQL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: COMMUNITY_SOLUTION_DETAILS_QUERY,
+      variables: { topicId: topicId },
+    }),
+  });
 
-  let code: string | null = null;
+  if (!res.ok) return "";
 
-  // Try markdown fences with js/javascript tag first
-  const mdMatch = normalized.match(/```(?:javascript|js|JavaScript)\n([\s\S]*?)```/i);
-  if (mdMatch) code = mdMatch[1].trim();
+  const json = await res.json();
+  return json?.data?.ugcArticleSolutionArticle?.content || "";
+}
 
-  // Fallback: any ``` block
-  if (!code) {
-    const anyMatch = normalized.match(/```[^\n]*\n([\s\S]*?)```/);
-    if (anyMatch) code = anyMatch[1].trim();
+export function extractCode(content: string, lang = 'javascript'): string | null {
+  const codeBlocks: Record<string, string> = {};
+  const regex = /```(\w+) \[\]\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+      codeBlocks[match[1]] = match[2].trim();
   }
 
-  // Fallback: <pre> or <code> tags (LeetCode sometimes sends HTML)
-  if (!code) {
-    const preMatch = normalized.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-    if (preMatch) code = preMatch[1].replace(/<[^>]+>/g, "").trim();
-  }
-
-  if (!code) return null;
-
-  // Reject truncated code: braces must be balanced
-  const opens = (code.match(/\{/g) ?? []).length;
-  const closes = (code.match(/\}/g) ?? []).length;
-  if (opens !== closes) return null;
-
-  // Must contain a function definition
-  if (!/function|=>/.test(code)) return null;
-
-  return code;
+  return codeBlocks[lang] || null;
 }
 
 export async function pollSubmissionResult(

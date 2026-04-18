@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions } from "@/lib/leetcode";
+import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions, fetchCommunitySolutionDetail, extractCode } from "@/lib/leetcode";
 import { notifyUser } from "@/lib/notify";
 
 // Vercel Cron: runs at 01:00 UTC daily
@@ -58,10 +58,16 @@ async function processUser(
       lastResult = { status: "error", error: "No community solutions found" };
     } else {
       // Try each solution until one is accepted
-      for (const code of solutions) {
+      for (const solution of solutions) {
         let submissionId: string;
         try {
-          submissionId = await submitSolution(problem.slug, code, user.lcSession, user.lcCsrfToken);
+          const solutionDetails = await fetchCommunitySolutionDetail(solution.node.topicId);
+          const code = extractCode(solutionDetails);
+          if (!code) {
+            continue;
+          }
+
+          submissionId = await submitSolution(problem.slug, code as string, user.lcSession, user.lcCsrfToken);
         } catch (err) {
           lastResult = { status: "error", error: String(err) };
           continue;
@@ -72,7 +78,7 @@ async function processUser(
 
         if (result.status === "accepted") break;
         // Brief pause before trying next solution to avoid rate limits
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 30000));
       }
     }
   } catch (err) {
