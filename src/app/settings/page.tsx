@@ -64,7 +64,6 @@ export default function SettingsPage() {
   }
 
   const telegram = notifications.find((n) => n.type === "telegram");
-  const email = notifications.find((n) => n.type === "email");
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10">
@@ -137,13 +136,6 @@ export default function SettingsPage() {
           type="telegram"
           placeholder="Chat ID (e.g. 123456789)"
           current={telegram}
-          onSave={saveNotification}
-        />
-        <NotificationRow
-          label="Email"
-          type="email"
-          placeholder="you@example.com"
-          current={email}
           onSave={saveNotification}
         />
       </div>

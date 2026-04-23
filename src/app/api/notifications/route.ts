@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest) {
 
   const { type, target, enabled } = await req.json();
 
-  if (!["telegram", "email"].includes(type)) {
+  if (type !== "telegram") {
     return NextResponse.json({ error: "Invalid type" }, { status: 400 });
   }
 

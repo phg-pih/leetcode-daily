@@ -37,26 +37,6 @@ export async function sendTelegram(chatId: string, message: string) {
   }
 }
 
-// ---------- Email ----------
-
-export async function sendEmail(to: string, subject: string, body: string) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT ?? "587"),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM,
-    to,
-    subject,
-    text: body,
-  });
-}
-
 // ---------- Unified notify ----------
 
 interface NotificationChannel {
@@ -67,17 +47,13 @@ interface NotificationChannel {
 
 export async function notifyUser(
   channels: NotificationChannel[],
-  subject: string,
+  _subject: string,
   message: string
 ): Promise<{ type: string; ok: boolean; error?: string }[]> {
-  const active = channels.filter((c) => c.enabled);
+  const active = channels.filter((c) => c.enabled && c.type === "telegram");
 
   const results = await Promise.allSettled(
-    active.map((ch) => {
-      if (ch.type === "telegram") return sendTelegram(ch.target, message);
-      if (ch.type === "email") return sendEmail(ch.target, subject, message);
-      return Promise.resolve();
-    })
+    active.map((ch) => sendTelegram(ch.target, message))
   );
 
   return results.map((r, i) => {

@@ -1,12 +1,12 @@
 # LeetCode Daily Auto-Submit
 
-Automatically submits the LeetCode Daily Challenge on your behalf every day at 01:00 UTC. Finds the top community solutions, submits them until one is accepted, logs the result, and notifies you via Telegram or email.
+Automatically submits the LeetCode Daily Challenge on your behalf every day at 01:00 UTC. Finds the top community solutions, submits them until one is accepted, logs the result, and notifies you via Telegram.
 
 ## Features
 
 - **Daily auto-submit** — Vercel Cron runs at 01:00 UTC, finds community solutions and submits until accepted
 - **Multi-user** — Each user stores their own LeetCode session; the cron processes all of them in parallel
-- **Notifications** — Telegram and/or email (enable/disable per channel)
+- **Notifications** — Telegram (enable/disable per channel)
 - **Submission history** — Dashboard shows your last submissions with status, runtime, and memory
 - **OAuth login** — Sign in with Google or GitHub
 
@@ -22,7 +22,7 @@ Automatically submits the LeetCode Daily Challenge on your behalf every day at 0
                2. Validate code (reject truncated/incomplete extractions)
                3. Submit solutions one by one until Accepted
                4. Log result to database
-               5. Send Telegram / email notification
+               5. Send Telegram notification
 ```
 
 ---
@@ -51,7 +51,7 @@ Go to **Settings** in the app and fill in both fields. Leave a field blank when 
 
 ### 3. Set Up Notifications (Optional)
 
-In **Settings**, configure one or both notification channels:
+In **Settings**, configure the Telegram channel:
 
 #### Telegram
 1. Message [@BotFather](https://t.me/BotFather) on Telegram and create a bot — save the token (for server config)
@@ -65,9 +65,6 @@ Problem: Two Sum (Easy)
 Runtime: 72ms
 Memory: 48.3MB
 ```
-
-#### Email
-Enter your email address and toggle Email **on**. Requires SMTP to be configured by the server admin.
 
 ### 4. View Your Submission History
 
@@ -114,10 +111,6 @@ cp .env .env.local
 | `RESEND_API_KEY` | (Optional) [Resend](https://resend.com) API key for magic link email |
 | `EMAIL_FROM` | From address for magic link emails |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
-| `SMTP_HOST` | SMTP server host |
-| `SMTP_PORT` | SMTP port (typically `587`) |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASS` | SMTP password |
 | `CRON_SECRET` | Secret to protect the cron endpoint: `openssl rand -base64 32` |
 
 ### 3. Set Up the Database
@@ -213,7 +206,7 @@ npm run db:generate  # Regenerate Prisma client
 | ORM | Prisma 6 |
 | Database (local) | SQLite |
 | Database (prod) | Turso (libSQL) |
-| Notifications | Telegram Bot API + Nodemailer (SMTP) |
+| Notifications | Telegram Bot API |
 | Deployment | Vercel (Cron + Serverless Functions) |
 
 ---

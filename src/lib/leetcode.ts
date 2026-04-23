@@ -36,6 +36,14 @@ const SUBMISSION_CHECK_QUERY = `
       runtime
       memory
       runtimeError
+      compileError
+      fullCompileError
+      fullRuntimeError
+      lastTestcase
+      codeOutput
+      expectedOutput
+      totalCorrect
+      totalTestcases
     }
   }
 `;
@@ -204,42 +212,44 @@ export function extractCode(content: string, lang = 'javascript'): string | null
 export async function pollSubmissionResult(
   submissionId: string,
   lcSession: string,
-  maxAttempts = 10
+  csrfToken: string,
+  maxAttempts = 15
 ): Promise<{ status: string; runtime?: string; memory?: string; error?: string }> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 2000));
 
-    const res = await fetch(LEETCODE_GRAPHQL, {
-      method: "POST",
+    const res = await fetch(`https://leetcode.com/submissions/detail/${submissionId}/check/`, {
       headers: {
-        "Content-Type": "application/json",
-        Cookie: `LEETCODE_SESSION=${lcSession}`,
+        Cookie: `LEETCODE_SESSION=${lcSession}; csrftoken=${csrfToken}`,
+        "X-CSRFToken": csrfToken,
+        Referer: "https://leetcode.com/",
       },
-      body: JSON.stringify({
-        query: SUBMISSION_CHECK_QUERY,
-        variables: { submissionId: parseInt(submissionId) },
-      }),
     });
 
-    const json = await res.json();
-    const details = json.data?.submissionDetails;
+    if (!res.ok) continue;
+    const data = await res.json();
+    if (data.state !== "SUCCESS") continue; // PENDING or STARTED
 
-    if (!details) continue;
-    if (details.statusCode === 10) {
-      // Accepted
+    if (data.status_code === 10) {
       return {
         status: "accepted",
-        runtime: String(details.runtime),
-        memory: String(details.memory),
+        runtime: data.status_runtime,
+        memory: String(data.status_memory ?? data.memory ?? ""),
       };
     }
-    if (details.statusCode !== 0) {
-      // Not pending anymore
-      return {
-        status: details.statusDisplay?.toLowerCase().replace(/ /g, "_") ?? "error",
-        error: details.runtimeError,
-      };
-    }
+
+    const parts: string[] = [];
+    if (data.compile_error) parts.push(`compile: ${data.compile_error}`);
+    if (data.runtime_error) parts.push(`runtime: ${data.runtime_error}`);
+    if (data.last_testcase) parts.push(`tc: ${String(data.last_testcase).slice(0, 120)}`);
+    if (data.code_output) parts.push(`got: ${String(data.code_output).slice(0, 120)}`);
+    if (data.expected_output) parts.push(`want: ${String(data.expected_output).slice(0, 120)}`);
+    if (data.total_testcases != null) parts.push(`passed: ${data.total_correct}/${data.total_testcases}`);
+
+    return {
+      status: (data.status_msg ?? "error").toLowerCase().replace(/ /g, "_"),
+      error: parts.join(" | ") || undefined,
+    };
   }
 
   return { status: "timeout" };

@@ -52,12 +52,16 @@ async function processUser(
 
   let lastResult: Awaited<ReturnType<typeof pollSubmissionResult>> = { status: "error", error: "No solutions tried" };
 
+  // Statuses where retrying a different community solution won't help — the issue is
+  // code format / LeetCode judge, not the algorithm.
+  const TERMINAL_STATUSES = new Set(["accepted", "internal_error", "compile_error"]);
+
   try {
-    const solutions = await fetchCommunitySolutions(problem.slug);
+    const solutions = await fetchCommunitySolutions(problem.slug, "javascript", 3);
     if (!solutions.length) {
       lastResult = { status: "error", error: "No community solutions found" };
     } else {
-      // Try each solution until one is accepted
+      let submittedCount = 0;
       for (const solution of solutions) {
         let submissionId: string;
         try {
@@ -68,17 +72,21 @@ async function processUser(
           }
 
           submissionId = await submitSolution(problem.slug, code as string, user.lcSession, user.lcCsrfToken);
+          submittedCount++;
         } catch (err) {
           lastResult = { status: "error", error: String(err) };
           continue;
         }
 
-        const result = await pollSubmissionResult(submissionId, user.lcSession);
+        const result = await pollSubmissionResult(submissionId, user.lcSession, user.lcCsrfToken);
         lastResult = result;
 
-        if (result.status === "accepted") break;
-        // Brief pause before trying next solution to avoid rate limits
+        if (TERMINAL_STATUSES.has(result.status)) break;
         await new Promise((r) => setTimeout(r, 30000));
+      }
+
+      if (submittedCount === 0 && lastResult.status === "error" && lastResult.error === "No solutions tried") {
+        lastResult = { status: "error", error: "No JavaScript code could be extracted from community solutions" };
       }
     }
   } catch (err) {
