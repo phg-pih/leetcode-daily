@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions, fetchCommunitySolutionDetail, extractCode } from "@/lib/leetcode";
-import { notifyUser } from "@/lib/notify";
+import { notifyUser, escapeHtml } from "@/lib/notify";
 
 // Vercel Cron: runs at 01:00 UTC daily
 export const maxDuration = 300; // 5 min timeout
@@ -101,9 +101,10 @@ async function processUser(
   // Always notify the user — both success and failure
   const isAccepted = lastResult.status === "accepted";
   const emoji = isAccepted ? "✅" : "❌";
+  const title = escapeHtml(problem.title);
   const message = isAccepted
-    ? `${emoji} *LeetCode Daily Accepted!*\n*Problem:* ${problem.title} (${problem.difficulty})\n*Runtime:* ${lastResult.runtime}\n*Memory:* ${lastResult.memory}`
-    : `${emoji} *LeetCode Daily Failed*\n*Problem:* ${problem.title}\n*Status:* ${lastResult.status}${lastResult.error ? `\n*Error:* ${lastResult.error}` : ""}`;
+    ? `${emoji} <b>LeetCode Daily Accepted!</b>\n<b>Problem:</b> ${title} (${escapeHtml(problem.difficulty)})\n<b>Runtime:</b> ${escapeHtml(String(lastResult.runtime ?? ""))}\n<b>Memory:</b> ${escapeHtml(String(lastResult.memory ?? ""))}`
+    : `${emoji} <b>LeetCode Daily Failed</b>\n<b>Problem:</b> ${title}\n<b>Status:</b> ${escapeHtml(String(lastResult.status))}${lastResult.error ? `\n<b>Error:</b> ${escapeHtml(String(lastResult.error))}` : ""}`;
 
   const notifyResults = await notifyUser(user.notifications, `LeetCode Daily: ${problem.title}`, message);
 
