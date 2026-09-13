@@ -6,11 +6,18 @@ export interface DailyProblem {
   difficulty: string;
 }
 
+export interface SolutionTag {
+  name: string;
+  slug: string;
+  tagType: string | null;
+}
+
 export interface SolutionNode {
   node: {
     title: string;
     slug: string;
     topicId: number;
+    tags: SolutionTag[];
   }
 }
 
@@ -154,6 +161,11 @@ const COMMUNITY_SOLUTIONS_QUERY = `
       articleType
       summary
       topicId
+      tags {
+          name
+          slug
+          tagType
+      }
   }
 `;
 
@@ -165,7 +177,7 @@ const COMMUNITY_SOLUTION_DETAILS_QUERY = `
   }
 `;
 
-export async function fetchCommunitySolutions(slug: string, langSlug = "javascript", first = 5, orderBy = "HOT"): Promise<SolutionNode[]> {
+export async function fetchCommunitySolutions(slug: string, langSlug = "javascript", first = 10, orderBy = "HOT"): Promise<SolutionNode[]> {
   const res = await fetch(LEETCODE_GRAPHQL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -197,16 +209,85 @@ export async function fetchCommunitySolutionDetail(topicId: number): Promise<str
   return json?.data?.ugcArticleSolutionArticle?.content || "";
 }
 
-export function extractCode(content: string, lang = 'javascript'): string | null {
-  const codeBlocks: Record<string, string> = {};
-  const regex = /```(\w+) \[\]\n([\s\S]*?)```/g;
-  let match: RegExpExecArray | null;
+// LeetCode marks language tags with tagType null, but the data is inconsistent
+// (e.g. "python" sometimes comes back as COMPANY), so match on an explicit slug set.
+const LANGUAGE_TAG_SLUGS = new Set([
+  "c", "cpp", "csharp", "java", "python", "python3", "javascript", "typescript",
+  "php", "swift", "kotlin", "dart", "golang", "ruby", "scala", "rust", "racket",
+  "erlang", "elixir", "bash", "mysql", "mssql", "oraclesql", "postgresql", "pythondata", "react",
+]);
 
-  while ((match = regex.exec(content)) !== null) {
-      codeBlocks[match[1]] = match[2].trim();
+export function countLanguageTags(node: SolutionNode): number {
+  return (node.node.tags ?? []).filter((t) => LANGUAGE_TAG_SLUGS.has(t.slug)).length;
+}
+
+/**
+ * Put single-language posts first: every result already carries the `javascript`
+ * tag (we filter on it), so one language tag means a JavaScript-only write-up —
+ * those have a single code block and extract far more reliably than the
+ * "here it is in 6 languages" posts. Stable, so LeetCode's HOT order breaks ties.
+ */
+export function rankSolutions(solutions: SolutionNode[]): SolutionNode[] {
+  return solutions
+    .map((node, index) => ({ node, index, langs: countLanguageTags(node) }))
+    .sort((a, b) => a.langs - b.langs || a.index - b.index)
+    .map((entry) => entry.node);
+}
+
+const LANG_FENCE_ALIASES: Record<string, string[]> = {
+  javascript: ["javascript", "js", "node", "nodejs", "jsx"],
+};
+
+function looksLikeJavaScript(code: string): boolean {
+  if (!/[{;]/.test(code)) return false;
+  return /\b(var|let|const|function|class)\b/.test(code) || /=>/.test(code);
+}
+
+const UNESCAPE_MAP: Record<string, string> = {
+  n: "\n", t: "\t", r: "\r", '"': '"', "'": "'", "`": "`", "\\": "\\",
+};
+
+/**
+ * Some community posts come back with their line breaks encoded as the two
+ * characters `\` + `n` instead of real newlines, which makes every fence regex
+ * miss. A post is always entirely one way or the other, so only unescape when
+ * the document contains no real newline at all — that way a `"\n"` that is
+ * genuinely part of the solution's source is never mangled.
+ */
+export function normalizeContent(content: string): string {
+  if (content.includes("\n") || !content.includes("\\n")) return content;
+  return content.replace(/\\(.)/g, (whole, ch: string) => UNESCAPE_MAP[ch] ?? whole);
+}
+
+export function extractCode(rawContent: string, lang = 'javascript'): string | null {
+  const content = normalizeContent(rawContent);
+  const aliases = LANG_FENCE_ALIASES[lang] ?? [lang];
+  const isAlias = (label: string) => aliases.includes(label.trim().toLowerCase());
+
+  // 1. LeetCode's own multi-language format: ```javascript []
+  const tagged = /```(\w+) \[\]\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  while ((match = tagged.exec(content)) !== null) {
+    if (isAlias(match[1])) return match[2].trim();
   }
 
-  return codeBlocks[lang] || null;
+  // 2. Plain labelled fence: ```javascript
+  const labelled = /```([A-Za-z0-9+#]*)[^\n]*\n([\s\S]*?)```/g;
+  while ((match = labelled.exec(content)) !== null) {
+    if (isAlias(match[1])) return match[2].trim();
+  }
+
+  // 3. Unlabelled fence — common on single-language posts. Only accept a block
+  //    that actually reads as code, since prose gets fenced here too.
+  if (lang === "javascript") {
+    const bare = /```[^\S\n]*\n([\s\S]*?)```/g;
+    while ((match = bare.exec(content)) !== null) {
+      const code = match[1].trim();
+      if (looksLikeJavaScript(code)) return code;
+    }
+  }
+
+  return null;
 }
 
 export async function pollSubmissionResult(
