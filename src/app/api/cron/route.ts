@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions, fetchCommunitySolutionDetail, extractCode, rankSolutions, countLanguageTags } from "@/lib/leetcode";
-import { notifyUser, escapeHtml } from "@/lib/notify";
+import { notifyUser, escapeHtml, sessionWarning } from "@/lib/notify";
 
 // Vercel Cron: runs at 01:00 UTC daily
 export const maxDuration = 300; // 5 min timeout
@@ -15,6 +15,9 @@ const DELAY_BETWEEN_SUBMITS_MS = 10_000;
 const ATTEMPT_BUDGET_MS = 45_000;
 // Leave room at the end of the invocation for the DB write + notification.
 const WRAP_UP_MS = 15_000;
+// Warn this many days before LEETCODE_SESSION expires. The cookie lasts ~2
+// weeks, so a few days is enough notice to re-sync without a run ever failing.
+const SESSION_WARN_DAYS = 3;
 
 export async function GET(req: NextRequest) {
   const startedAt = Date.now();
@@ -208,7 +211,18 @@ async function processUser(
     ? `${emoji} <b>LeetCode Daily Accepted!</b>\n<b>Problem:</b> ${title} (${escapeHtml(problem.difficulty)})\n<b>Runtime:</b> ${escapeHtml(String(lastResult.runtime ?? ""))}\n<b>Memory:</b> ${escapeHtml(String(lastResult.memory ?? ""))}\n<b>Attempt:</b> ${submittedCount} of ${attempts.length} tried`
     : `${emoji} <b>LeetCode Daily Failed</b>\n<b>Problem:</b> ${title}\n<b>Status:</b> ${escapeHtml(String(lastResult.status))}\n<b>Tried:</b> ${submittedCount}/${attempts.length} solution(s)${lastResult.error ? `\n<b>Error:</b> ${escapeHtml(String(lastResult.error))}` : ""}`;
 
-  const notifyResults = await notifyUser(user.notifications, `LeetCode Daily: ${problem.title}`, message);
+  const warning = sessionWarning(user.lcSession, SESSION_WARN_DAYS);
+  const notifyResults = await notifyUser(
+    user.notifications,
+    `LeetCode Daily: ${problem.title}`,
+    message + (warning?.line ?? "")
+  );
 
-  return { ...lastResult, attempts, submitted: submittedCount, notifications: notifyResults };
+  return {
+    ...lastResult,
+    attempts,
+    submitted: submittedCount,
+    sessionDaysLeft: warning?.daysLeft ?? null,
+    notifications: notifyResults,
+  };
 }

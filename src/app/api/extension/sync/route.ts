@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       expiresAt: expiresAt?.toISOString() ?? null,
       daysLeft: expiresAt
-        ? Math.floor((expiresAt.getTime() - Date.now()) / 86_400_000)
+        ? Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
         : null,
     },
     { headers: CORS }

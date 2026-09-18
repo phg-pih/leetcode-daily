@@ -1,3 +1,5 @@
+import { leetcodeSessionExpiry } from "@/lib/leetcode";
+
 // ---------- Telegram ----------
 
 export function escapeHtml(s: string): string {
@@ -63,4 +65,31 @@ export async function notifyUser(
     }
     return { type: active[i].type, ok: true };
   });
+}
+
+
+// ---------- Session expiry ----------
+
+// Appended to the daily notification when the session is close to expiring, so
+// the user gets warning *before* a run fails rather than after. Returns null
+// when the cookie isn't a JWT we can read — better to stay quiet than guess.
+export function sessionWarning(lcSession: string, warnDays: number): { line: string; daysLeft: number } | null {
+  const expiresAt = leetcodeSessionExpiry(lcSession);
+  if (!expiresAt) return null;
+
+  // Ceil, not floor: the JWT's exp is second-precision, so a cookie exactly N
+  // days out measures a few hundred ms short and would floor to N-1 — reporting
+  // "1 day" with two days left, and "expired" with twelve hours still to go.
+  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000);
+  if (daysLeft > warnDays) return null;
+
+  const headline =
+    daysLeft <= 0
+      ? "LeetCode session has expired"
+      : `LeetCode session expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
+
+  return {
+    daysLeft,
+    line: `\n\n⚠️ <b>${headline}</b>\nRe-sync with the browser extension, or paste a fresh cookie in Settings.`,
+  };
 }
