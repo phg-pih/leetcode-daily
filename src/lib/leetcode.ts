@@ -80,7 +80,7 @@ export async function submitSolution(
   lcSession: string,
   csrfToken: string,
   retries = 1,
-  onRotate?: (session: string) => void
+  onRotate?: (rotated: { value: string; expiresAt: Date | null }) => void
 ): Promise<string> {
   const questionId = await getQuestionId(slug);
 
@@ -299,7 +299,7 @@ export async function pollSubmissionResult(
   lcSession: string,
   csrfToken: string,
   maxAttempts = 15,
-  onRotate?: (session: string) => void
+  onRotate?: (rotated: { value: string; expiresAt: Date | null }) => void
 ): Promise<{ status: string; runtime?: string; memory?: string; error?: string }> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -345,19 +345,49 @@ export async function pollSubmissionResult(
 }
 
 // LeetCode reissues LEETCODE_SESSION on roughly half of authenticated requests,
-// with the expiry pushed a fresh 14 days out. Capturing it keeps the stored copy
-// sliding forward instead of ageing out. Which requests carry one is not
-// predictable, so callers simply take whichever arrives.
-export function extractRotatedSession(res: Response): string | null {
+// with the Set-Cookie expiry pushed a fresh 14 days out. Capturing it keeps the
+// stored copy sliding forward instead of ageing out. Which requests carry one is
+// not predictable, so callers simply take whichever arrives.
+//
+// The header's expiry is returned alongside the value because it is the only
+// trustworthy one: the JWT payload's refreshed_at does not move on rotation.
+export function extractRotatedSession(
+  res: Response
+): { value: string; expiresAt: Date | null } | null {
   const cookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
   for (const cookie of cookies) {
     if (!cookie.startsWith("LEETCODE_SESSION=")) continue;
-    const value = cookie.slice("LEETCODE_SESSION=".length).split(";")[0];
+
+    const [pair, ...attrs] = cookie.split(";");
+    const value = pair.slice("LEETCODE_SESSION=".length);
     // A logout or session-clear sends an empty value; persisting that over a
     // working session would lock the account out of its own cron.
-    if (value && value !== '""') return value;
+    if (!value || value === '""') return null;
+
+    return { value, expiresAt: cookieExpiry(attrs) };
   }
   return null;
+}
+
+// Max-Age wins over Expires per RFC 6265; both are optional.
+function cookieExpiry(attrs: string[]): Date | null {
+  let expires: Date | null = null;
+
+  for (const attr of attrs) {
+    const [rawName, ...rest] = attr.split("=");
+    const name = rawName.trim().toLowerCase();
+    const value = rest.join("=").trim();
+
+    if (name === "max-age") {
+      const seconds = Number(value);
+      if (Number.isFinite(seconds)) return new Date(Date.now() + seconds * 1000);
+    } else if (name === "expires") {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) expires = parsed;
+    }
+  }
+
+  return expires;
 }
 
 // LEETCODE_SESSION is a JWT, but its payload has no standard `exp` claim —

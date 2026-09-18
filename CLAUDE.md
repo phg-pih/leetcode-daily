@@ -74,13 +74,23 @@ rest of the run, and persists it, so the stored cookie slides forward instead of
 ageing out. An empty value is ignored: that is a logout, and writing it over a
 live session would lock the cron out.
 
-**Unresolved:** the `Set-Cookie` header's `expires` slides a fresh 14 days on
-each rotation, but the JWT payload's `refreshed_at` does *not* move — so
-`leetcodeSessionExpiry()` keeps reporting the original date. If real server-side
-validity follows the header (likely) rather than the payload, the warning will
-eventually cry wolf on a session that still works. Proving it either way takes
-14 days of observation. Storing the header's `expires` in a new column would
-settle it properly.
+### Which expiry to trust
+
+The `Set-Cookie` header's `expires` slides a fresh 14 days on every rotation,
+but the JWT payload's `refreshed_at` does *not* move — so the payload
+under-reports, by a full day already on the first rotation.
+
+`User.lcSessionExpiresAt` holds the authoritative date and is the source of
+truth wherever it is set:
+
+- the cron writes the header's `expires` whenever it captures a rotation
+- the extension sends `chrome.cookies.get().expirationDate`, the browser's own
+  view of the cookie's life
+
+`leetcodeSessionExpiry()` (the JWT payload) is now only a fallback for when the
+column is still null — a fresh account, or before the first rotation lands.
+`sessionWarning()` takes a `Date | null` rather than a cookie, so the caller
+decides which source applies; null means stay quiet rather than guess.
 
 Days-remaining uses `Math.ceil`, not `floor`: the timestamps are second-
 precision, so a cookie exactly N days out measures a few hundred ms short and

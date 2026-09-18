@@ -1,5 +1,3 @@
-import { leetcodeSessionExpiry } from "@/lib/leetcode";
-
 // ---------- Telegram ----------
 
 export function escapeHtml(s: string): string {
@@ -71,15 +69,20 @@ export async function notifyUser(
 // ---------- Session expiry ----------
 
 // Appended to the daily notification when the session is close to expiring, so
-// the user gets warning *before* a run fails rather than after. Returns null
-// when the cookie isn't a JWT we can read — better to stay quiet than guess.
-export function sessionWarning(lcSession: string, warnDays: number): { line: string; daysLeft: number } | null {
-  const expiresAt = leetcodeSessionExpiry(lcSession);
+// the user gets warning *before* a run fails rather than after. Takes the date
+// rather than the cookie: the caller knows whether the stored expiry (from
+// Set-Cookie) or the JWT payload is the trustworthy source. Null means "say
+// nothing" — better quiet than a guessed date.
+export function sessionWarning(
+  expiresAt: Date | null,
+  warnDays: number
+): { line: string; daysLeft: number } | null {
   if (!expiresAt) return null;
 
-  // Ceil, not floor: the JWT's exp is second-precision, so a cookie exactly N
-  // days out measures a few hundred ms short and would floor to N-1 — reporting
-  // "1 day" with two days left, and "expired" with twelve hours still to go.
+  // Ceil, not floor: these timestamps are second-precision, so an expiry
+  // exactly N days out measures a few hundred ms short and would floor to
+  // N-1 — reporting "1 day" with two days left, and "expired" with twelve
+  // hours still to go.
   const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000);
   if (daysLeft > warnDays) return null;
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions, fetchCommunitySolutionDetail, extractCode, rankSolutions, countLanguageTags } from "@/lib/leetcode";
+import { fetchDailyProblem, submitSolution, pollSubmissionResult, fetchCommunitySolutions, fetchCommunitySolutionDetail, extractCode, rankSolutions, countLanguageTags, leetcodeSessionExpiry } from "@/lib/leetcode";
 import { notifyUser, escapeHtml, sessionWarning } from "@/lib/notify";
 
 // Vercel Cron: runs at 01:00 UTC daily
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   try {
     users = await db.user.findMany({
       where: { lcSession: { not: null }, lcCsrfToken: { not: null } },
-      select: { id: true, lcSession: true, lcCsrfToken: true, email: true, notifications: { select: { type: true, target: true, enabled: true } } },
+      select: { id: true, lcSession: true, lcCsrfToken: true, lcSessionExpiresAt: true, email: true, notifications: { select: { type: true, target: true, enabled: true } } },
     });
   } catch (err) {
     console.error("DB error:", err);
@@ -112,7 +112,7 @@ function isSessionError(err: unknown): boolean {
 }
 
 async function processUser(
-  user: { id: string; lcSession: string | null; lcCsrfToken: string | null; email: string | null; notifications: { type: string; target: string; enabled: boolean }[] },
+  user: { id: string; lcSession: string | null; lcCsrfToken: string | null; lcSessionExpiresAt: Date | null; email: string | null; notifications: { type: string; target: string; enabled: boolean }[] },
   problem: Awaited<ReturnType<typeof fetchDailyProblem>>,
   deadline: number
 ) {
@@ -123,7 +123,13 @@ async function processUser(
   // so the stored cookie slides forward instead of ageing out.
   const storedSession = user.lcSession;
   let session = storedSession;
-  const onRotate = (next: string) => { session = next; };
+  // Prefer the stored Set-Cookie expiry; fall back to the JWT payload, which
+  // under-reports because refreshed_at doesn't move when the cookie rotates.
+  let expiresAt = user.lcSessionExpiresAt ?? leetcodeSessionExpiry(storedSession);
+  const onRotate = (next: { value: string; expiresAt: Date | null }) => {
+    session = next.value;
+    if (next.expiresAt) expiresAt = next.expiresAt;
+  };
 
   let lastResult: Awaited<ReturnType<typeof pollSubmissionResult>> = { status: "error", error: "No solutions tried" };
   const attempts: AttemptLog[] = [];
@@ -202,7 +208,10 @@ async function processUser(
   let sessionRotated = false;
   if (session !== storedSession) {
     try {
-      await db.user.update({ where: { id: user.id }, data: { lcSession: session } });
+      await db.user.update({
+        where: { id: user.id },
+        data: { lcSession: session, ...(expiresAt ? { lcSessionExpiresAt: expiresAt } : {}) },
+      });
       sessionRotated = true;
     } catch (err) {
       console.error(`[cron] failed to persist rotated session for ${user.id}:`, err);
@@ -230,7 +239,7 @@ async function processUser(
     ? `${emoji} <b>LeetCode Daily Accepted!</b>\n<b>Problem:</b> ${title} (${escapeHtml(problem.difficulty)})\n<b>Runtime:</b> ${escapeHtml(String(lastResult.runtime ?? ""))}\n<b>Memory:</b> ${escapeHtml(String(lastResult.memory ?? ""))}\n<b>Attempt:</b> ${submittedCount} of ${attempts.length} tried`
     : `${emoji} <b>LeetCode Daily Failed</b>\n<b>Problem:</b> ${title}\n<b>Status:</b> ${escapeHtml(String(lastResult.status))}\n<b>Tried:</b> ${submittedCount}/${attempts.length} solution(s)${lastResult.error ? `\n<b>Error:</b> ${escapeHtml(String(lastResult.error))}` : ""}`;
 
-  const warning = sessionWarning(session, SESSION_WARN_DAYS);
+  const warning = sessionWarning(expiresAt, SESSION_WARN_DAYS);
   const notifyResults = await notifyUser(
     user.notifications,
     `LeetCode Daily: ${problem.title}`,

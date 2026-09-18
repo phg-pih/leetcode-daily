@@ -59,6 +59,10 @@ model User {
   lcSession      String?
   lcCsrfToken    String?
   lcUsername     String?
+  // Authoritative expiry from the cookie's own Set-Cookie/browser metadata.
+  // The JWT payload's refreshed_at does not move when LeetCode rotates the
+  // cookie, so it under-reports; this column is the source of truth when set.
+  lcSessionExpiresAt DateTime?
   accounts      Account[]
   sessions      Session[]
   notifications Notification[]

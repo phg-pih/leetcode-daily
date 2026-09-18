@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
   }
 
-  const { lcSession, lcCsrfToken, lcUsername } = await req.json().catch(() => ({}));
+  const { lcSession, lcCsrfToken, lcUsername, expiresAt } = await req.json().catch(() => ({}));
   if (!lcSession || !lcCsrfToken) {
     return NextResponse.json(
       { error: "Missing lcSession or lcCsrfToken — are you logged in to leetcode.com?" },
@@ -62,22 +62,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: target.error }, { status: 409, headers: CORS });
   }
 
+  // The browser knows the cookie's real expiry; the JWT payload does not, since
+  // refreshed_at doesn't move when LeetCode rotates it. Fall back to the payload
+  // only when the extension didn't send one.
+  const browserExpiry =
+    typeof expiresAt === "number" ? new Date(expiresAt * 1000) : null;
+  const effectiveExpiry =
+    browserExpiry && !Number.isNaN(browserExpiry.getTime())
+      ? browserExpiry
+      : leetcodeSessionExpiry(lcSession);
+
   await db.user.update({
     where: { id: target.id },
     data: {
       lcSession,
       lcCsrfToken,
       ...(lcUsername ? { lcUsername } : {}),
+      ...(effectiveExpiry ? { lcSessionExpiresAt: effectiveExpiry } : {}),
     },
   });
-
-  const expiresAt = leetcodeSessionExpiry(lcSession);
   return NextResponse.json(
     {
       ok: true,
-      expiresAt: expiresAt?.toISOString() ?? null,
-      daysLeft: expiresAt
-        ? Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
+      expiresAt: effectiveExpiry?.toISOString() ?? null,
+      daysLeft: effectiveExpiry
+        ? Math.ceil((effectiveExpiry.getTime() - Date.now()) / 86_400_000)
         : null,
     },
     { headers: CORS }
