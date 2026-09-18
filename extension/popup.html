@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 300px; margin: 0; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: #0b0f19; color: #e5e7eb; }
+      h1 { margin: 0 0 12px; font-size: 14px; }
+      label { display: block; margin-bottom: 4px; color: #9ca3af; font-size: 12px; }
+      input { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 6px 8px; border: 1px solid #374151; border-radius: 6px; background: #111827; color: #e5e7eb; }
+      button { padding: 6px 12px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+      button.secondary { background: #374151; }
+      #status { margin-top: 12px; font-size: 12px; color: #9ca3af; word-break: break-word; }
+      .ok { color: #4ade80; }
+      .bad { color: #f87171; }
+    </style>
+  </head>
+  <body>
+    <h1>LeetCode Daily Sync</h1>
+    <label for="appUrl">App URL</label>
+    <input id="appUrl" placeholder="https://your-app.vercel.app" />
+    <label for="secret">EXTENSION_SECRET</label>
+    <input id="secret" type="password" placeholder="same value as in your env" />
+    <button id="save">Save</button>
+    <button id="syncNow" class="secondary">Sync now</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -335,3 +335,16 @@ export async function pollSubmissionResult(
 
   return { status: "timeout" };
 }
+
+// LEETCODE_SESSION is a JWT; its payload carries an `exp` claim. Returns null
+// if the cookie isn't in that shape, so callers degrade instead of throwing.
+export function leetcodeSessionExpiry(lcSession: string): Date | null {
+  const parts = lcSession.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return typeof payload.exp === "number" ? new Date(payload.exp * 1000) : null;
+  } catch {
+    return null;
+  }
+}
