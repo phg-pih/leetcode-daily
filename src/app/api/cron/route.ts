@@ -118,6 +118,13 @@ async function processUser(
 ) {
   if (!user.lcSession || !user.lcCsrfToken) return { skipped: true };
 
+  // LeetCode hands back a refreshed LEETCODE_SESSION on some responses. Track
+  // the newest one, use it for the rest of this run, and persist it at the end
+  // so the stored cookie slides forward instead of ageing out.
+  const storedSession = user.lcSession;
+  let session = storedSession;
+  const onRotate = (next: string) => { session = next; };
+
   let lastResult: Awaited<ReturnType<typeof pollSubmissionResult>> = { status: "error", error: "No solutions tried" };
   const attempts: AttemptLog[] = [];
   let submittedCount = 0;
@@ -154,7 +161,7 @@ async function processUser(
             await new Promise((r) => setTimeout(r, DELAY_BETWEEN_SUBMITS_MS));
           }
 
-          submissionId = await submitSolution(problem.slug, code, user.lcSession, user.lcCsrfToken);
+          submissionId = await submitSolution(problem.slug, code, session, user.lcCsrfToken, 1, onRotate);
           submittedCount++;
         } catch (err) {
           lastResult = { status: "error", error: String(err) };
@@ -166,7 +173,7 @@ async function processUser(
           continue;
         }
 
-        const result = await pollSubmissionResult(submissionId, user.lcSession, user.lcCsrfToken);
+        const result = await pollSubmissionResult(submissionId, session, user.lcCsrfToken, 15, onRotate);
         lastResult = result;
         attempts.push({ ...label, status: result.status, error: result.error });
 
@@ -190,6 +197,18 @@ async function processUser(
     lastResult = { ...lastResult, error: [lastResult.error, stoppedEarly].filter(Boolean).join(" | ") };
   }
 
+  // Persist a rotated cookie even when the run failed — the fresher session is
+  // still worth keeping, and a failure is exactly when it matters most.
+  let sessionRotated = false;
+  if (session !== storedSession) {
+    try {
+      await db.user.update({ where: { id: user.id }, data: { lcSession: session } });
+      sessionRotated = true;
+    } catch (err) {
+      console.error(`[cron] failed to persist rotated session for ${user.id}:`, err);
+    }
+  }
+
   // Log final result to DB
   await db.submission.create({
     data: {
@@ -211,7 +230,7 @@ async function processUser(
     ? `${emoji} <b>LeetCode Daily Accepted!</b>\n<b>Problem:</b> ${title} (${escapeHtml(problem.difficulty)})\n<b>Runtime:</b> ${escapeHtml(String(lastResult.runtime ?? ""))}\n<b>Memory:</b> ${escapeHtml(String(lastResult.memory ?? ""))}\n<b>Attempt:</b> ${submittedCount} of ${attempts.length} tried`
     : `${emoji} <b>LeetCode Daily Failed</b>\n<b>Problem:</b> ${title}\n<b>Status:</b> ${escapeHtml(String(lastResult.status))}\n<b>Tried:</b> ${submittedCount}/${attempts.length} solution(s)${lastResult.error ? `\n<b>Error:</b> ${escapeHtml(String(lastResult.error))}` : ""}`;
 
-  const warning = sessionWarning(user.lcSession, SESSION_WARN_DAYS);
+  const warning = sessionWarning(session, SESSION_WARN_DAYS);
   const notifyResults = await notifyUser(
     user.notifications,
     `LeetCode Daily: ${problem.title}`,
@@ -222,6 +241,7 @@ async function processUser(
     ...lastResult,
     attempts,
     submitted: submittedCount,
+    sessionRotated,
     sessionDaysLeft: warning?.daysLeft ?? null,
     notifications: notifyResults,
   };

@@ -65,9 +65,22 @@ falls back to those two, and returns null otherwise rather than inventing a
 date. Don't assume `exp` — an earlier version did and the warning was silently
 inert.
 
-`refreshed_at` moves, so LeetCode does reissue the cookie on use. Capturing a
-rotated `Set-Cookie` server-side would extend the session without the extension;
-not implemented.
+### Cookie rotation
+
+LeetCode reissues `LEETCODE_SESSION` on roughly half of authenticated requests
+(measured 3/6 and 3/8 in separate samples — it is not predictable which). The
+cron captures whichever arrives via `extractRotatedSession()`, uses it for the
+rest of the run, and persists it, so the stored cookie slides forward instead of
+ageing out. An empty value is ignored: that is a logout, and writing it over a
+live session would lock the cron out.
+
+**Unresolved:** the `Set-Cookie` header's `expires` slides a fresh 14 days on
+each rotation, but the JWT payload's `refreshed_at` does *not* move — so
+`leetcodeSessionExpiry()` keeps reporting the original date. If real server-side
+validity follows the header (likely) rather than the payload, the warning will
+eventually cry wolf on a session that still works. Proving it either way takes
+14 days of observation. Storing the header's `expires` in a new column would
+settle it properly.
 
 Days-remaining uses `Math.ceil`, not `floor`: the timestamps are second-
 precision, so a cookie exactly N days out measures a few hundred ms short and

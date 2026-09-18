@@ -79,7 +79,8 @@ export async function submitSolution(
   code: string,
   lcSession: string,
   csrfToken: string,
-  retries = 1
+  retries = 1,
+  onRotate?: (session: string) => void
 ): Promise<string> {
   const questionId = await getQuestionId(slug);
 
@@ -98,6 +99,9 @@ export async function submitSolution(
         typed_code: code,
       }),
     });
+
+    const rotated = extractRotatedSession(res);
+    if (rotated) onRotate?.(rotated);
 
     if (res.status === 429) {
       if (attempt === retries) throw new Error(`Submit failed: 429 (rate limited after ${retries + 1} attempts)`);
@@ -294,7 +298,8 @@ export async function pollSubmissionResult(
   submissionId: string,
   lcSession: string,
   csrfToken: string,
-  maxAttempts = 15
+  maxAttempts = 15,
+  onRotate?: (session: string) => void
 ): Promise<{ status: string; runtime?: string; memory?: string; error?: string }> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -306,6 +311,9 @@ export async function pollSubmissionResult(
         Referer: "https://leetcode.com/",
       },
     });
+
+    const rotated = extractRotatedSession(res);
+    if (rotated) onRotate?.(rotated);
 
     if (!res.ok) continue;
     const data = await res.json();
@@ -334,6 +342,22 @@ export async function pollSubmissionResult(
   }
 
   return { status: "timeout" };
+}
+
+// LeetCode reissues LEETCODE_SESSION on roughly half of authenticated requests,
+// with the expiry pushed a fresh 14 days out. Capturing it keeps the stored copy
+// sliding forward instead of ageing out. Which requests carry one is not
+// predictable, so callers simply take whichever arrives.
+export function extractRotatedSession(res: Response): string | null {
+  const cookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
+  for (const cookie of cookies) {
+    if (!cookie.startsWith("LEETCODE_SESSION=")) continue;
+    const value = cookie.slice("LEETCODE_SESSION=".length).split(";")[0];
+    // A logout or session-clear sends an empty value; persisting that over a
+    // working session would lock the account out of its own cron.
+    if (value && value !== '""') return value;
+  }
+  return null;
 }
 
 // LEETCODE_SESSION is a JWT, but its payload has no standard `exp` claim —
