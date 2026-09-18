@@ -53,13 +53,26 @@ deal with that:
 2. **`/api/extension/sync`** — bearer-auth via `EXTENSION_SECRET`, targets the
    account named by `EXTENSION_USER_EMAIL` (falls back to the sole account, and
    refuses once more than one exists).
-3. **Expiry warning** — `sessionWarning()` in `src/lib/notify.ts` decodes the
-   JWT `exp` and appends a warning to the daily Telegram message once the
-   session is within three days of expiring.
+3. **Expiry warning** — `sessionWarning()` in `src/lib/notify.ts` appends a
+   warning to the daily Telegram message once the session is within three days
+   of expiring.
 
-Days-remaining uses `Math.ceil`, not `floor`: `exp` is second-precision, so a
-cookie exactly N days out measures a few hundred ms short and would floor to
-N−1 — reporting "1 day" with two left, and "expired" with twelve hours to go.
+The cookie is a three-segment JWT, but its payload carries **no standard `exp`
+claim**. LeetCode ships Django's own fields instead: `_session_expiry` (lifetime
+in seconds, currently `1209600` = 14 days) and `refreshed_at` (issue time), so
+expiry is the sum. `leetcodeSessionExpiry()` prefers `exp` if it ever appears,
+falls back to those two, and returns null otherwise rather than inventing a
+date. Don't assume `exp` — an earlier version did and the warning was silently
+inert.
+
+`refreshed_at` moves, so LeetCode does reissue the cookie on use. Capturing a
+rotated `Set-Cookie` server-side would extend the session without the extension;
+not implemented.
+
+Days-remaining uses `Math.ceil`, not `floor`: the timestamps are second-
+precision, so a cookie exactly N days out measures a few hundred ms short and
+would floor to N−1 — reporting "1 day" with two left, and "expired" with twelve
+hours to go.
 
 ## Auto-submit behaviour
 

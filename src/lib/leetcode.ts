@@ -336,15 +336,28 @@ export async function pollSubmissionResult(
   return { status: "timeout" };
 }
 
-// LEETCODE_SESSION is a JWT; its payload carries an `exp` claim. Returns null
-// if the cookie isn't in that shape, so callers degrade instead of throwing.
+// LEETCODE_SESSION is a JWT, but its payload has no standard `exp` claim —
+// LeetCode ships Django's own fields: `_session_expiry` (lifetime in seconds,
+// currently 1209600 = 14 days) alongside `refreshed_at` (when it was issued).
+// `exp` is still preferred if it ever appears. Returns null when neither shape
+// is present, so callers stay quiet rather than inventing an expiry.
 export function leetcodeSessionExpiry(lcSession: string): Date | null {
   const parts = lcSession.split(".");
   if (parts.length !== 3) return null;
+
+  let payload: Record<string, unknown>;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    return typeof payload.exp === "number" ? new Date(payload.exp * 1000) : null;
+    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
   } catch {
     return null;
   }
+
+  if (typeof payload.exp === "number") return new Date(payload.exp * 1000);
+
+  const { refreshed_at: refreshedAt, _session_expiry: lifetime } = payload;
+  if (typeof refreshedAt === "number" && typeof lifetime === "number") {
+    return new Date((refreshedAt + lifetime) * 1000);
+  }
+
+  return null;
 }
